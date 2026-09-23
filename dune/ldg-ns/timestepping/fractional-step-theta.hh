@@ -231,6 +231,7 @@ public:
     DenseVectorType w = velocity_;
     DenseVectorType u_new(d * N);
     size_t iteration = 0;
+    bool converged = false;
     for (; iteration < options_.max_picard_iterations; ++iteration) {
       const SparseType T = op_.convection(w);
       const SparseType velocity_block = op_.mass() + substep.c_imp * (op_.viscous() + T);
@@ -244,10 +245,11 @@ public:
                       << change / norm << std::endl;
       if (change <= options_.picard_tolerance * norm) {
         ++iteration;
+        converged = true;
         break;
       }
     }
-    if (iteration == options_.max_picard_iterations)
+    if (!converged)
       logger_.warn() << "Picard iteration did not converge in substep to t = " << t_b << "!" << std::endl;
     velocity_ = u_new;
     time_ = t_b;

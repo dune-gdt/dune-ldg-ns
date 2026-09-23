@@ -92,7 +92,8 @@ public:
             const LocalAnsatzBasisType& ansatz_basis,
             const XT::Common::Parameter& param = {}) const final
   {
-    return test_basis.order(param) + std::max(ansatz_basis.order(param) - 1, 0);
+    // not order - 1: for Q_k the derivative keeps degree k in the transverse directions
+    return test_basis.order(param) + ansatz_basis.order(param);
   }
 
   using BaseType::evaluate;

@@ -18,8 +18,8 @@ The formulation, algorithm, architecture, validation results and roadmap are in 
 
 | test | result |
 |---|---|
-| Kovasznay Re = 40, $Q_1/Q_0$, $Q_2/Q_1$ | $L^2$ EOC $u$: 1.99 / 3.00, $p$: 1.08 / 2.10 |
-| Taylor–Green 2D, FS-θ, $Q_2/Q_1$ | temporal EOC $u$: 2.02, recovered $p$: → 2, multiplier $\lambda$: 1.03 |
+| Kovasznay Re = 40, $Q_1/Q_0$, $Q_2/Q_1$ | $L^2$ EOC $u$: 1.99 / 3.00, $p$: 1.08 / 2.13 |
+| Taylor–Green 2D, FS-θ, $Q_2/Q_1$ | temporal EOC $u$: 2.07; recovered $p$: 1.69 (pre-asymptotic); multiplier $\lambda$: 1.03 |
 | Taylor–Green 3D ($z$-invariant) | runs, $\|Bu-g_B\|\approx 10^{-15}$ |
 | FS-θ coefficients | identities, 2nd order with forcing, $\lvert R(-\infty)\rvert = 1/\sqrt2$ |
 | DFG 2D-3 | smoke run on a crude mesh only, see below |
@@ -88,8 +88,19 @@ gmsh -2 -format msh22 -setnumber h 0.02 -setnumber hc 0.005 grids/dfg-cylinder-2
 
 This writes `t, c_D, c_L, Δp, Picard iterations` per macro step as CSV. Reference values (Schäfer–Turek 1996,
 John 2004, FEATFLOW) are in [doc/design.md §5.3](doc/design.md#53-dfg-2d-2--2d-3-schäferturek-1996).
-**No quantitative DFG results yet.** gmsh was not available during development. A smoke run on a crude Delaunay
-mesh (`dev/tools/dfg_mesh.py`, ~900 triangles, affine cylinder) only shows that the pipeline runs end to end.
+**No quantitative DFG results yet**, because gmsh was not available during development. A smoke run of 2D-3 used a crude
+Delaunay mesh (`dev/tools/dfg_mesh.py --h 0.05 --hc 0.012`: 895 triangles, affine cylinder), $Q_2/Q_1$, FS-θ with
+$K=0.05$, and recovered pressure. It ran in 25 min on 1 core, with ≤ 8 Picard iterations per substep:
+
+| quantity | smoke run | reference (John 2004) |
+|---|---|---|
+| $c_{D,\max}$ ($t$) | 2.982 (3.95) | 2.950921575 (3.93625) |
+| $c_{L,\max}$ ($t$) | 0.234 (6.00) | 0.47795 (5.693125) |
+| $\Delta p(8)$ | −0.1080 | −0.1116 |
+
+Drag and Δp are already in the right range. Lift is far too small and too late, which is the known symptom of an
+under-resolved wake and a coarse $K$. These numbers are not a benchmark result. (This run used the code before the
+review fixes in §7 of the design doc: quadrature order of the $G_j$ volume term, and re-analysis in the sparse LU.)
 
 ## License
 

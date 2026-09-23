@@ -67,14 +67,14 @@ namespace GDT {
 namespace NavierStokes {
 
 
-/// \brief Discretization parameters, see doc/design.md, Sec. 3.5 for the defaults.
+/// \brief Discretization parameters, see doc/design.md, Sec. 3.
 template <size_t d>
 struct LdgOptions
 {
   int velocity_order = 2; //!< k
   int pressure_order = 1; //!< k - 1 (inf-sup stable) or k (requires pressure_penalty > 0)
   FieldVector<double, d> beta = FieldVector<double, d>(0.); //!< LDG switch, beta_F = beta . n
-  double eta = 1.; //!< LDG penalty C11 = nu * eta / h_F (any eta > 0 is stable for LDG)
+  double eta = 0.; //!< LDG penalty C11 = nu * eta / h_F (any eta > 0 is stable for LDG); eta <= 0 means 4 k^2
   double upwind = 1.; //!< 0: central convective flux, 1: full upwinding
   double pressure_penalty = 0.; //!< gamma of the pressure jump stabilization gamma h_F [[p]][[q]]
   bool use_tbb = false; //!< thread-parallel grid walks
@@ -103,6 +103,7 @@ public:
   using VectorGridFunctionType = XT::Functions::GridFunction<E, d>;
   using OptionsType = LdgOptions<d>;
 
+  /// \note boundary_info is stored by reference and has to outlive this operator.
   LdgNavierStokesOperator(const GV& grid_view,
                           const BoundaryInfoType& boundary_info,
                           const double viscosity,
@@ -144,6 +145,12 @@ public:
   double viscosity() const
   {
     return nu_;
+  }
+
+  /// \brief The LDG penalty parameter actually used (options().eta, or 4 k^2 if that is <= 0).
+  double effective_eta() const
+  {
+    return options_.eta > 0 ? options_.eta : 4. * options_.velocity_order * options_.velocity_order;
   }
 
   const OptionsType& options() const
@@ -375,7 +382,7 @@ public:
 private:
   std::function<double(double)> penalty_coefficient() const
   {
-    const double c = nu_ * options_.eta;
+    const double c = nu_ * effective_eta();
     return [c](const double h) { return c / h; };
   }
 

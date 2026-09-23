@@ -46,7 +46,8 @@ The LDG switch is $\beta_F=\beta\cdot n$ with a global vector $\beta$ (default $
 | $\hat p$ | $\{p\}$ | $p^-$ | natural (dropped) |
 | $\hat u\cdot n$ (continuity) | $\{u\}\cdot n$ | $g\cdot n$ | $u^-\cdot n$ |
 
-with $C_{11}=\nu\eta/h_F$ and $h_F=\operatorname{diam}F$. Any $\eta>0$ is stable for LDG. The default is $\eta=4k^2$.
+with $C_{11}=\nu\eta/h_F$ and $h_F=\operatorname{diam}F$. Any $\eta>0$ is stable for LDG. The default (`LdgOptions::eta <= 0`)
+is $\eta=4k^2$.
 
 ### 3.2 Gradient: $M\sigma_{ij} = G_j u_i + b_{ij}(g)$
 
@@ -78,7 +79,8 @@ F_i(v) = (f_i,v) + \int_{\Gamma_D}\tfrac{\nu\eta}{h_F}g_i v - \nu\sum_j (G_j v)^
 $$
 
 $M^{-1}$ is the exact element-block inverse (`element_block_inverse`), so $A_\text{visc}$ is sparse with the DG
-neighbour stencil (plus the neighbours-of-neighbours coupling that is inherent to LDG with $\beta\ne 0$). The
+neighbour stencil plus the neighbours-of-neighbours coupling of $G^\top M^{-1}G$ (inherent to LDG and present for any
+$\beta$, including the default $\beta=0$). The
 divergence is $B_j = -G_j(\beta{=}0)$ with pressure test functions:
 
 $$
@@ -97,8 +99,8 @@ For each component, the skew-symmetrized form (Temam, Di Pietro–Ern) with opti
 $$
 \begin{aligned}
 t_h(w;u,v) ={}& \sum_K\int_K (w\cdot\nabla u)v + \tfrac12(\nabla\cdot w)uv
- - \sum_{F\,\text{inner}}\int_F \{w\}\!\cdot\! n\,[[u]]\{v\} + \tfrac12[[w]]\!\cdot\! n\,\{uv\}
- - [\![\text{upw}]\!]\,\tfrac12|\{w\}\!\cdot\! n|\,[[u]][[v]] \\
+ + \sum_{F\,\text{inner}}\int_F \Big(-\{w\}\!\cdot\! n\,[[u]]\{v\} - \tfrac12[[w]]\!\cdot\! n\,\{uv\}
+ + \tfrac{\text{upw}}{2}\,|\{w\}\!\cdot\! n|\,[[u]][[v]]\Big) \\
 &- \int_{\partial\Omega}(w\cdot n)^-uv,\qquad\text{rhs: } -\int_{\Gamma_D}(w\cdot n)^- g\,v .
 \end{aligned}
 $$
@@ -172,8 +174,10 @@ the recommended output for drag/lift and $\Delta p$.
 ### 4.4 Linear solver
 
 The monolithic matrix
-$\begin{bmatrix} I_d\otimes(aM+c(A_\text{visc}+T)) & \tau B^\top & (q)\\ \tau B & -\tau C & 0\\ (\tau q^\top) & 0 & 0\end{bmatrix}$
-is assembled from triplets. It is factorized with Eigen `SparseLU` (symbolic analysis once, because the pattern is fixed)
+$\begin{bmatrix} I_d\otimes(aM+c(A_\text{visc}+T)) & \tau B^\top & 0\\ \tau B & -\tau C & (\tau q)\\ 0 & (\tau q^\top) & 0\end{bmatrix}$
+($q_k=\int_\Omega\psi_k$, only with the mean-pressure constraint)
+is assembled from triplets. It is factorized with Eigen `SparseLU` (the symbolic analysis is reused while the sparsity
+pattern is unchanged, i.e. across Picard iterations and substeps, and redone otherwise)
 or UMFPACK if available. This is fine for 2D and small 3D problems. For 3D, see §8.
 
 ## 5. Validation cases
@@ -198,8 +202,9 @@ $U_\max=1.5$ (2D-2) or $1.5\sin(\pi t/8)$ (2D-3), and do-nothing outflow. $c_{D/
 $U_\text{mean}=1$ and $D=0.1$.
 
 The forces are computed from the **LDG flux** on the cylinder faces,
-$F=\int_S p\,n-\nu\hat\sigma n$ with $\nu\hat\sigma n=\nu\sigma n-\tfrac{\nu\eta}{h_F}(u-g)$, which is the traction consistent
-with the discrete momentum balance (`body_force`). $\Delta p=p(0.15,0.2)-p(0.25,0.2)$.
+$F=\int_S p\,n-\nu\hat\sigma n$ with $\nu\hat\sigma n=\nu\sigma n-\tfrac{\nu\eta}{h_F}(u-g)$ and $n$ the outer normal of the fluid domain
+(`body_force`). This is the viscous and pressure traction of the discrete momentum balance. The convective boundary
+flux $-(u\cdot n)^-(u-g)$ is omitted, because it is quadratic in the weak boundary error. $\Delta p=p(0.15,0.2)-p(0.25,0.2)$.
 
 Reference values:
 
@@ -237,7 +242,8 @@ Design decisions:
 * **Scalar blocks, vector unknowns.** Every block is assembled once as a scalar $N\times N$ (or $P\times N$) matrix and
   reused for all $d$ components. This cuts assembly work by a factor of $d$ ($d^2$ for $G$), and keeps the integrands
   simple. It relies on the dimwise numbering of `DiscontinuousLagrangeSpace<GV, d>` matching the scalar numbering
-  block-wise. The constructor checks this.
+  block-wise. This holds for dune-gdt's `DiscontinuousMapper` (same element order, per-component offsets, powered FE
+  with local index $c\,n+l$). The constructor only checks the sizes.
 * **Eigen storage.** `EigenRowMajorSparseMatrix` is the dune-xt matrix. Its backend is used directly for the sparse
   products $G^\top M^{-1}G$ and the triplet assembly of the block system.
 * **Time as a parameter.** All data are `GridFunction`s with a `"t"` parameter, so dune-gdt's parametric machinery
@@ -252,32 +258,44 @@ Design decisions:
 
 | $k$ | $h$ | $\|u-u_h\|/\|u\|$ | EOC | $\|p-p_h\|$ | EOC | Picard its |
 |---|---|---|---|---|---|---|
-| 1 | 0.25 | 7.812e-02 | – | 1.514e-01 | – | 29 |
-| 1 | 0.125 | 1.893e-02 | 2.05 | 7.165e-02 | 1.08 | 27 |
-| 1 | 0.0625 | 4.767e-03 | 1.99 | 3.381e-02 | 1.08 | 25 |
-| 2 | 0.25 | 1.038e-02 | – | 1.084e-02 | – | 25 |
-| 2 | 0.125 | 1.312e-03 | 2.98 | 2.261e-03 | 2.26 | 25 |
-| 2 | 0.0625 | 1.641e-04 | 3.00 | 5.266e-04 | 2.10 | 25 |
+| 1 | 0.25 | 7.752e-02 | – | 1.508e-01 | – | 26 |
+| 1 | 0.125 | 1.883e-02 | 2.04 | 7.155e-02 | 1.08 | 25 |
+| 1 | 0.0625 | 4.730e-03 | 1.99 | 3.380e-02 | 1.08 | 24 |
+| 2 | 0.25 | 1.027e-02 | – | 1.144e-02 | – | 26 |
+| 2 | 0.125 | 1.299e-03 | 2.98 | 2.371e-03 | 2.27 | 25 |
+| 2 | 0.0625 | 1.626e-04 | 3.00 | 5.429e-04 | 2.13 | 25 |
 
-**Taylor–Green 2D, ν = 0.1, $Q_2/Q_1$ on 8×8, T = 1, errors vs. K/4 reference** (`test_taylor_green`):
+**Taylor–Green 2D, ν = 0.1, $Q_2/Q_1$ on 8×8, T = 1, errors vs. a reference run with $K_\text{ref}=0.0125$ on the same
+mesh** (`test_taylor_green`; $p_\text{rec}$ = recovered pressure, $\lambda$ = multiplier):
 
 | scheme | $K$ | $\|u-u_\text{ref}\|$ | EOC | $\|p_\text{rec}-p_\text{ref}\|$ | EOC | $\|\lambda-p_\text{ref}\|$ | EOC | $\|Bu-g_B\|$ |
 |---|---|---|---|---|---|---|---|---|
-| FS-θ | 0.2 | 5.32e-04 | – | 1.31e-03 | – | 9.96e-04 | – | 6e-16 |
-| FS-θ | 0.1 | 1.31e-04 | 2.02 | 7.73e-05 | 4.09 | 5.25e-04 | 0.92 | 9e-16 |
-| FS-θ | 0.05 | 3.24e-05 | 2.02 | 2.45e-05 | 1.66 | 2.57e-04 | 1.03 | 1e-15 |
-| CN | 0.2 / 0.1 / 0.05 | 5.40e-03 / 1.91e-03 / 2.65e-04 | 1.50 / 2.85 | | | | | |
-| BE | 0.2 / 0.1 / 0.05 | 5.26e-02 / 2.57e-02 / 1.13e-02 | 1.03 / 1.19 | | | | | |
+| FS-θ | 0.2 | 5.31e-04 | – | 1.32e-03 | – | 9.94e-04 | – | 9e-16 |
+| FS-θ | 0.1 | 1.30e-04 | 2.03 | 7.63e-05 | 4.11 | 5.24e-04 | 0.92 | 1e-15 |
+| FS-θ | 0.05 | 3.09e-05 | 2.07 | 2.36e-05 | 1.69 | 2.56e-04 | 1.03 | 2e-15 |
+| CN | 0.2 / 0.1 / 0.05 | 5.41e-03 / 1.92e-03 / 2.66e-04 | 1.49 / 2.85 | 6.23e-02 / 2.95e-02 / 1.97e-03 | 1.08 / 3.90 | | | |
+| BE | 0.2 / 0.1 / 0.05 | 5.26e-02 / 2.57e-02 / 1.13e-02 | 1.03 / 1.19 | 8.39e-03 / 3.85e-03 / 1.64e-03 | 1.12 / 1.24 | | | |
 
-These results show: (i) second order in time for FS-θ velocity, (ii) a first-order multiplier and a recovered pressure that
-is second order asymptotically (the 4.09 is pre-asymptotic cancellation), (iii) Crank–Nicolson reaching second order only
+Before the review fixes (see below) the numbers agreed to 2–3 digits. With a finer reference ($K_\text{ref}=0.00625$),
+the FS-θ velocity EOCs were 2.02 / 2.02.
+
+These results show: (i) second order in time for the FS-θ velocity, (ii) a first-order multiplier $\lambda$, while the
+recovered pressure is clearly better (EOC 4.11, then 1.69, i.e. pre-asymptotic; second order is expected but **not yet
+demonstrated**, which needs the $K=0.025$ level and a finer reference), (iii) Crank–Nicolson reaching second order only
 late, because it does not damp the stiff error components of the initial projection, while FS-θ is strongly A-stable,
 $|R(-\infty)|=\beta/\alpha=1/\sqrt2$ (`test_fstheta_coefficients`), and (iv) the constraint satisfied to round-off.
 
 **Taylor–Green 3D** ($z$-invariant, $Q_1/Q_0$, $4^3$, $K=0.1$, $T=0.3$): relative velocity error 0.23 (spatially
-unresolved, as expected at $h=0.5$), $\|Bu-g_B\|=2\cdot10^{-15}$, ≤ 8 Picard iterations. This is a smoke test only.
+unresolved, as expected at $h=0.5$), $\|Bu-g_B\|=1.4\cdot10^{-15}$, ≤ 8 Picard iterations. This is a smoke test only.
 
-**DFG**: see README (smoke run only; no gmsh in the development environment, so no quantitative benchmark numbers yet).
+**DFG 2D-3 smoke run** (crude 895-triangle mesh, $Q_2/Q_1$, $K=0.05$): $c_{D,\max}=2.982$ at $t=3.95$ (ref. 2.9509 at
+3.936), $\Delta p(8)=-0.108$ (ref. −0.1116), $c_{L,\max}=0.234$ (ref. 0.478, under-resolved wake). This is not a benchmark
+result, see README.
+
+**Review fixes** (after an independent review of this document against the code): the volume quadrature order of $G_j$
+(was $2k-1$, which under-integrates $\partial_j\phi\,\tau$ on $Q_k$); the symbolic LU analysis is now redone when the
+pattern changes (the projection step uses the narrower mass-matrix pattern); $\eta\le0$ now means $4k^2$; and the Picard
+non-convergence warning had an off-by-one. The Kovasznay and Taylor–Green tables above were produced after these fixes.
 
 ## 8. Open items (priority order)
 

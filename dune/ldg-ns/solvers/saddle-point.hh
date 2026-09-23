@@ -12,15 +12,15 @@
  * \brief Monolithic (Oseen-type) saddle point systems of the LDG discretization and their direct solution.
  *
  * Solves
- *   [ a M + c (A_visc + T)   (block diagonal, d copies)     tau B^T      (q) ] [ u      ]   [ r_u          ]
- *   [ tau B                                                -tau C        (0) ] [ lambda ] = [ tau r_p      ]
- *   [                                                        tau q^T      0 ] [ mu     ]   [ 0            ]
+ *   [ a M + c (A_visc + T)  (block diagonal, d copies)    tau B^T      0     ] [ u      ]   [ r_u     ]
+ *   [ tau B                                               -tau C       tau q ] [ lambda ] = [ tau r_p ]
+ *   [ 0                                                    tau q^T     0     ] [ mu     ]   [ 0       ]
  * where the last row/column (zero-mean pressure) is only present if requested.
  *
- * The pattern of the monolithic matrix does not change between calls (all blocks carry the full DG stencil), so the
- * symbolic factorization is computed only once.
+ * The symbolic factorization is reused as long as the sparsity pattern of the monolithic matrix does not change (e.g.
+ * between Picard iterations and substeps) and recomputed otherwise (e.g. after the projection with the mass matrix).
  *
- * \todo Block-preconditioned FGMRES (dune-istl) for 3D, see doc/design.md, Sec. 6.
+ * \todo Block-preconditioned FGMRES (dune-istl) for 3D, see doc/design.md, Sec. 8.
  */
 #ifndef DUNE_LDG_NS_SOLVERS_SADDLE_POINT_HH
 #define DUNE_LDG_NS_SOLVERS_SADDLE_POINT_HH
@@ -100,8 +100,9 @@ public:
     rhs.segment(0, d * N_) = rhs_u;
     rhs.segment(d * N_, P_) = tau * rhs_p;
     DenseVectorType x;
+    const bool pattern_changed = update_pattern();
     if (options_.type == "sparselu") {
-      if (!sparselu_) {
+      if (!sparselu_ || pattern_changed) {
         sparselu_ = std::make_unique<::Eigen::SparseLU<SparseType, ::Eigen::COLAMDOrdering<int>>>();
         sparselu_->analyzePattern(matrix_);
       }
@@ -113,7 +114,7 @@ public:
     }
 #if HAVE_SUITESPARSE_UMFPACK
     else if (options_.type == "umfpack") {
-      if (!umfpack_) {
+      if (!umfpack_ || pattern_changed) {
         umfpack_ = std::make_unique<::Eigen::UmfPackLU<SparseType>>();
         umfpack_->analyzePattern(matrix_);
       }
@@ -135,6 +136,21 @@ public:
   }
 
 private:
+  /// \return true iff the sparsity pattern of matrix_ differs from the one of the previous call
+  bool update_pattern()
+  {
+    const auto outer = matrix_.outerIndexPtr();
+    const auto inner = matrix_.innerIndexPtr();
+    std::vector<int> outer_now(outer, outer + matrix_.outerSize() + 1);
+    std::vector<int> inner_now(inner, inner + matrix_.nonZeros());
+    const bool changed = (outer_now != pattern_outer_) || (inner_now != pattern_inner_);
+    if (changed) {
+      pattern_outer_ = std::move(outer_now);
+      pattern_inner_ = std::move(inner_now);
+    }
+    return changed;
+  }
+
   void assemble(const RowMajorSparseType& velocity_block, const double tau)
   {
     using TripletType = ::Eigen::Triplet<double>;
@@ -173,6 +189,8 @@ private:
   const size_t N_;
   const size_t P_;
   SparseType matrix_;
+  std::vector<int> pattern_outer_;
+  std::vector<int> pattern_inner_;
   std::unique_ptr<::Eigen::SparseLU<SparseType, ::Eigen::COLAMDOrdering<int>>> sparselu_;
 #if HAVE_SUITESPARSE_UMFPACK
   std::unique_ptr<::Eigen::UmfPackLU<SparseType>> umfpack_;

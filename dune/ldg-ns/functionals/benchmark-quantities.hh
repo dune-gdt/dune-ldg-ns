@@ -34,8 +34,9 @@ namespace NavierStokes {
  *
  *   F = int_S (p n - nu sigma_hat n) ds,   nu sigma_hat n = nu sigma n - nu eta / h_F (u - g),
  *
- * where n is the outer normal of the fluid domain and sigma_hat the LDG flux on Dirichlet faces, i.e. the traction
- * that is consistent with the discrete momentum balance.
+ * where n is the outer normal of the fluid domain and sigma_hat the LDG flux on Dirichlet faces, i.e. the viscous and
+ * pressure traction of the discrete momentum balance. The convective boundary flux -(u.n)^- (u - g) is not included; it
+ * is quadratic in the (weakly imposed) boundary error.
  */
 template <class GV>
 FieldVector<double, GV::dimension>
@@ -62,7 +63,7 @@ body_force(const LdgNavierStokesOperator<GV>& op,
     local_sigma.emplace_back(sigma[ij].local_function());
   const auto face_diameter = LocalIntegrands::default_face_diameter<typename LdgNavierStokesOperator<GV>::I>();
   const double nu = op.viscosity();
-  const double eta = op.options().eta;
+  const double eta = op.effective_eta();
   const int order = 2 * op.options().velocity_order + 2;
   FieldVector<double, d> force(0.);
   for (auto&& element : elements(op.grid_view())) {
@@ -99,7 +100,11 @@ body_force(const LdgNavierStokesOperator<GV>& op,
 } // ... body_force(...)
 
 
-/// \brief Point value of a discrete function (brute-force element search, meant for a few output points).
+/**
+ * \brief Point value of a discrete function (brute-force element search, meant for a few output points).
+ * \note Returns the value of the first element containing x; for x on a face, the (discontinuous) value is taken from
+ *       an arbitrary adjacent element.
+ */
 template <class GV, size_t r, class R>
 std::optional<FieldVector<R, r>>
 point_value(const GV& grid_view,
