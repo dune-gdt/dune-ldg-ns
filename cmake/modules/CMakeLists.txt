@@ -1,0 +1,1 @@
+install(FILES DuneLdgNsMacros.cmake DESTINATION ${DUNE_INSTALL_MODULEDIR})

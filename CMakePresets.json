@@ -1,0 +1,80 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 29,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "CMAKE_CXX_EXTENSIONS": "OFF",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_DISABLE_FIND_PACKAGE_MPI": "TRUE",
+        "CMAKE_TOOLCHAIN_FILE": "$env{DUNE_GDT_DIR}/.vcpkg-root/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_MANIFEST_MODE": "OFF",
+        "VCPKG_INSTALLED_DIR": "$env{DUNE_GDT_DIR}/build/$env{DUNE_GDT_PRESET}/vcpkg_installed",
+        "VCPKG_TARGET_TRIPLET": "x64-linux",
+        "dune-gdt_DIR": "$env{DUNE_GDT_DIR}/build/$env{DUNE_GDT_PRESET}"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release (on top of $DUNE_GDT_DIR/build/$DUNE_GDT_PRESET)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug (on top of $DUNE_GDT_DIR/build/$DUNE_GDT_PRESET)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "dune-ldg-ns-test"
+        }
+      }
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "dune-ldg-ns-test"
+        }
+      }
+    }
+  ]
+}

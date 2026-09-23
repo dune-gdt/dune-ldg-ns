@@ -1,0 +1,5 @@
+file(GLOB_RECURSE _ldg_ns_headers RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.hh")
+foreach(_header IN LISTS _ldg_ns_headers)
+  get_filename_component(_dir ${_header} DIRECTORY)
+  install(FILES ${_header} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dune/ldg-ns/${_dir})
+endforeach()
